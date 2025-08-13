@@ -11,20 +11,20 @@ interface HotelCardProps {
   hotel: {
     id: string
     name: string
-    address?: string
-    star_rating?: number
-    hotel_chain?: string
+    address?: string | null
+    star_rating?: number | null
+    hotel_chain?: string | null
     city: {
       name: string
       flag_emoji: string
     }
     wifi_summary?: {
       speed_tier: string
-      overall_score?: number
-      estimated_speed_mbps?: number
-      business_suitable?: boolean
-      highlights?: string[]
-    }
+      overall_score?: number | null
+      estimated_speed_mbps?: number | null
+      business_suitable?: boolean | null
+      highlights?: any
+    } | null
   }
   href?: string
   className?: string
@@ -33,13 +33,13 @@ interface HotelCardProps {
 
 export default function HotelCard({ hotel, href, className, compact = false }: HotelCardProps) {
   const wifiQuality = hotel.wifi_summary ? getWiFiQuality(
-    hotel.wifi_summary.estimated_speed_mbps, 
-    hotel.wifi_summary.overall_score || undefined
+    hotel.wifi_summary.estimated_speed_mbps !== null ? hotel.wifi_summary.estimated_speed_mbps : undefined, 
+    hotel.wifi_summary.overall_score !== null ? hotel.wifi_summary.overall_score : undefined
   ) : 'moderate'
   
   const wifiStrength = hotel.wifi_summary ? getStrengthFromQuality(hotel.wifi_summary.speed_tier) : 3
 
-  const CardWrapper = href ? Link : 'div'
+  const CardWrapper: any = href ? Link : 'div'
   const cardProps = href ? { href } : {}
 
   return (
@@ -76,7 +76,7 @@ export default function HotelCard({ hotel, href, className, compact = false }: H
                       color: 'white'
                     }}
                   >
-                    {hotel.wifi_summary.overall_score?.toFixed(1) || 'N/A'}
+                    {hotel.wifi_summary.overall_score != null ? hotel.wifi_summary.overall_score.toFixed(1) : 'N/A'}
                   </Badge>
                   {hotel.wifi_summary.business_suitable && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse-glow" />
@@ -102,7 +102,7 @@ export default function HotelCard({ hotel, href, className, compact = false }: H
                     color: 'white'
                   }}
                 >
-                  {hotel.wifi_summary.overall_score?.toFixed(1) || 'N/A'}
+                  {hotel.wifi_summary.overall_score != null ? hotel.wifi_summary.overall_score.toFixed(1) : 'N/A'}
                 </Badge>
               )}
             </div>
@@ -144,7 +144,7 @@ export default function HotelCard({ hotel, href, className, compact = false }: H
                 <div>
                   <span className="text-muted-foreground">Speed</span>
                   <p className="font-medium">
-                    {hotel.wifi_summary.estimated_speed_mbps ? 
+                    {hotel.wifi_summary.estimated_speed_mbps !== null && hotel.wifi_summary.estimated_speed_mbps !== undefined ? 
                       `${hotel.wifi_summary.estimated_speed_mbps} Mbps` : 
                       hotel.wifi_summary.speed_tier ? 
                         hotel.wifi_summary.speed_tier.charAt(0).toUpperCase() + hotel.wifi_summary.speed_tier.slice(1) :
@@ -161,9 +161,9 @@ export default function HotelCard({ hotel, href, className, compact = false }: H
               </div>
 
               {/* Highlights */}
-              {hotel.wifi_summary.highlights && hotel.wifi_summary.highlights.length > 0 && !compact && (
+              {hotel.wifi_summary.highlights && Array.isArray(hotel.wifi_summary.highlights) && hotel.wifi_summary.highlights.length > 0 && !compact && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {hotel.wifi_summary.highlights.slice(0, 2).map((highlight, index) => (
+                  {hotel.wifi_summary.highlights.slice(0, 2).map((highlight: string, index: number) => (
                     <Badge 
                       key={index}
                       variant="outline" 

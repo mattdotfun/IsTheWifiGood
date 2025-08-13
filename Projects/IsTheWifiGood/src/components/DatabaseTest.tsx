@@ -11,7 +11,7 @@ type WifiSummary = Tables<'wifi_summaries'>
 
 interface HotelWithRelations extends Hotel {
   city: City
-  wifi_summary?: WifiSummary
+  wifi_summary?: WifiSummary | WifiSummary[] | null
 }
 
 export default function DatabaseTest() {
@@ -47,7 +47,14 @@ export default function DatabaseTest() {
           .order('name')
 
         if (hotelsError) throw hotelsError
-        setHotels((hotelsData as HotelWithRelations[]) || [])
+        // Process the data to handle wifi_summary arrays
+        const processedHotels = hotelsData?.map(hotel => ({
+          ...hotel,
+          wifi_summary: Array.isArray(hotel.wifi_summary) 
+            ? hotel.wifi_summary[0] 
+            : hotel.wifi_summary
+        })) || []
+        setHotels(processedHotels as HotelWithRelations[])
 
       } catch (err) {
         console.error('Database test error:', err)
@@ -122,7 +129,7 @@ export default function DatabaseTest() {
             <div key={hotel.id} className="p-4 border rounded-lg">
               <div className="flex justify-between items-start mb-2">
                 <h5 className="font-medium text-sm">{hotel.name}</h5>
-                {hotel.wifi_summary && hotel.wifi_summary.speed_tier && (
+                {hotel.wifi_summary && !Array.isArray(hotel.wifi_summary) && hotel.wifi_summary.speed_tier && (
                   <Badge 
                     className="text-xs"
                     style={{ 
@@ -140,13 +147,13 @@ export default function DatabaseTest() {
                 {hotel.hotel_chain && ` • ${hotel.hotel_chain}`}
               </div>
 
-              {hotel.wifi_summary && (
+              {hotel.wifi_summary && !Array.isArray(hotel.wifi_summary) && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span>Score:</span>
-                    <span className="font-medium">{hotel.wifi_summary.overall_score}/5</span>
+                    <span className="font-medium">{hotel.wifi_summary.overall_score != null ? `${hotel.wifi_summary.overall_score}/5` : 'N/A'}</span>
                   </div>
-                  {hotel.wifi_summary.estimated_speed_mbps && (
+                  {hotel.wifi_summary.estimated_speed_mbps !== null && hotel.wifi_summary.estimated_speed_mbps !== undefined && (
                     <div className="flex justify-between text-xs">
                       <span>Speed:</span>
                       <span className="font-medium">{hotel.wifi_summary.estimated_speed_mbps} Mbps</span>
