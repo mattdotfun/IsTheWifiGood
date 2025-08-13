@@ -9,13 +9,13 @@ This file tracks all tasks for the MVP implementation of "Is The Wi-Fi Good?" di
 ## Phase 1: Project Foundation (Week 1, Days 1-2)
 
 ### Project Setup & Infrastructure
-- [ ] Create GitHub repository with proper structure
-- [ ] Initialize Next.js 14 project with TypeScript  
+- [x] Create GitHub repository with proper structure
+- [x] Initialize Next.js 14 project with TypeScript  
 - [ ] Set up Supabase database and get credentials
-- [ ] Configure Shadcn UI and install core components
-- [ ] Set up Tailwind CSS with custom design tokens
-- [ ] Initialize project with proper folder structure
-- [ ] Create environment variables setup
+- [x] Configure Shadcn UI and install core components
+- [x] Set up Tailwind CSS with custom design tokens
+- [x] Initialize project with proper folder structure
+- [x] Create environment variables setup
 - [ ] Set up Vercel deployment pipeline
 
 ### Database Schema Design
