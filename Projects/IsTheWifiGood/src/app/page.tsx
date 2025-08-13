@@ -1,103 +1,118 @@
-import Image from "next/image";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  // Test WiFi quality colors
+  const testWifiLevels = [
+    { level: "excellent", score: 5, color: "rgb(16, 185, 129)" },
+    { level: "good", score: 4, color: "rgb(59, 130, 246)" },
+    { level: "moderate", score: 3, color: "rgb(245, 158, 11)" },
+    { level: "poor", score: 1, color: "rgb(239, 68, 68)" },
+  ];
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Hero Section */}
+      <div className="animate-gradient bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 py-20">
+        <div className="container mx-auto px-8 text-center">
+          <h1 className="text-5xl font-bold text-white mb-6 drop-shadow-2xl">
+            Never Suffer From
+            <span className="block gradient-text bg-gradient-to-r from-yellow-200 to-pink-200">
+              BAD HOTEL WIFI AGAIN
+            </span>
+          </h1>
+          <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
+            Find hotels with excellent Wi-Fi for business travelers. Compare internet speeds, 
+            reliability, and quality across major business destinations.
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-8 py-16">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-bold mb-4">🚧 Coming Soon</h2>
+          <p className="text-lg text-gray-600 mb-8">
+            We're building the most comprehensive hotel Wi-Fi quality directory for business travelers.
+          </p>
+        </div>
+
+        {/* WiFi Quality Demo */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+          {testWifiLevels.map((wifi) => (
+            <Card key={wifi.level} className="p-6 card-hover cursor-pointer">
+              <div className="text-center">
+                <div className="mb-4">
+                  {/* WiFi Strength Bars */}
+                  <div className="flex justify-center gap-1 mb-3">
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <div
+                        key={i}
+                        className={`w-3 transition-colors duration-300 ${
+                          i < wifi.score ? 'opacity-100' : 'opacity-20'
+                        }`}
+                        style={{
+                          height: `${12 + i * 4}px`,
+                          backgroundColor: i < wifi.score ? wifi.color : '#e5e7eb',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  
+                  <Badge 
+                    variant="secondary" 
+                    className="badge-hover"
+                    style={{ backgroundColor: wifi.color, color: 'white' }}
+                  >
+                    {wifi.level.toUpperCase()}
+                  </Badge>
+                </div>
+                <h3 className="font-semibold capitalize">{wifi.level} WiFi</h3>
+                <p className="text-sm text-gray-600">
+                  {wifi.level === 'excellent' && '200+ Mbps, Business grade'}
+                  {wifi.level === 'good' && '50-200 Mbps, Reliable'}
+                  {wifi.level === 'moderate' && '10-50 Mbps, Basic'}
+                  {wifi.level === 'poor' && '<10 Mbps, Limited'}
+                </p>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Cities Preview */}
+        <div className="text-center mb-12">
+          <h3 className="text-2xl font-bold mb-8">Target Cities (MVP)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              { city: "Singapore", flag: "🇸🇬", hotels: "30 hotels" },
+              { city: "London", flag: "🇬🇧", hotels: "30 hotels" },
+              { city: "New York", flag: "🇺🇸", hotels: "30 hotels" },
+            ].map((location) => (
+              <Card key={location.city} className="p-8 city-card-hover cursor-pointer">
+                <div className="text-6xl mb-4">{location.flag}</div>
+                <h4 className="text-xl font-bold mb-2">{location.city}</h4>
+                <p className="text-gray-600">{location.hotels}</p>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* Development Status */}
+        <div className="bg-blue-50 rounded-lg p-8 text-center">
+          <h3 className="text-xl font-bold mb-4">🛠️ Development in Progress</h3>
+          <p className="text-gray-700 mb-4">
+            Phase 1: Project foundation complete ✅<br/>
+            Next: Supabase database setup and web scraping implementation
+          </p>
+          <div className="flex justify-center gap-2">
+            <Badge variant="outline">Next.js 15</Badge>
+            <Badge variant="outline">Shadcn UI</Badge>
+            <Badge variant="outline">Tailwind CSS</Badge>
+            <Badge variant="outline">Supabase</Badge>
+            <Badge variant="outline">OpenAI GPT-5</Badge>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
