@@ -8,6 +8,9 @@ const inter = Inter({
   display: "swap",
 });
 
+// Cal Sans alternative using system fonts for now
+const calSansVariable = "--font-cal-sans";
+
 export const metadata: Metadata = {
   title: "Is The Wi-Fi Good? | Hotel Wi-Fi Quality Directory",
   description: "Find hotels with excellent Wi-Fi for business travelers. Compare hotel internet speeds, reliability, and quality across Singapore, London, and New York.",
@@ -36,6 +39,7 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={`${inter.variable} font-sans antialiased`}
+        style={{ ['--font-cal-sans' as any]: 'system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif' } as React.CSSProperties}
       >
         {children}
       </body>
