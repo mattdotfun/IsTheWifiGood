@@ -9,9 +9,10 @@ import DatabaseTest from '@/components/DatabaseTest'
 import { Badge } from '@/components/ui/badge'
 import { supabase, type Tables } from '@/lib/supabase'
 
+type WifiSummaryProp = Tables<'wifi_summaries'>
 type Hotel = Tables<'hotels'> & {
   city: Tables<'cities'>
-  wifi_summary?: Tables<'wifi_summaries'>
+  wifi_summary?: WifiSummaryProp | null
 }
 
 export default function Home() {
@@ -32,7 +33,14 @@ export default function Home() {
           .order('name')
 
         if (error) throw error
-        setFeaturedHotels((data as Hotel[]) || [])
+        // Process the data to handle wifi_summary arrays
+        const processedData = data?.map(hotel => ({
+          ...hotel,
+          wifi_summary: Array.isArray(hotel.wifi_summary) 
+            ? hotel.wifi_summary[0] 
+            : hotel.wifi_summary
+        })) || []
+        setFeaturedHotels(processedData as Hotel[])
       } catch (error) {
         console.error('Error fetching hotels:', error)
       } finally {
