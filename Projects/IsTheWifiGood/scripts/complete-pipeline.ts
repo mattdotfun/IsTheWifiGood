@@ -153,11 +153,19 @@ class CompleteWiFiPipeline {
       const warningsJson = JSON.stringify(summary.warnings)
       const useCaseScoresJson = JSON.stringify(summary.use_case_scores)
       
+      // Convert quirk arrays to PostgreSQL text array format
+      const locationQuirksArray = `ARRAY[${summary.location_quirks.map((q: string) => `'${q.replace(/'/g, "''")}'`).join(',')}]`
+      const timePatternsArray = `ARRAY[${summary.time_patterns.map((p: string) => `'${p.replace(/'/g, "''")}'`).join(',')}]`
+      const connectionQuirksArray = `ARRAY[${summary.connection_quirks.map((q: string) => `'${q.replace(/'/g, "''")}'`).join(',')}]`
+      const businessNotesArray = `ARRAY[${summary.business_traveler_notes.map((n: string) => `'${n.replace(/'/g, "''")}'`).join(',')}]`
+      const uniqueFeaturesArray = `ARRAY[${summary.unique_features.map((f: string) => `'${f.replace(/'/g, "''")}'`).join(',')}]`
+      
       const insertQuery = `
         INSERT INTO wifi_summaries (
           hotel_id, overall_score, speed_tier, summary_text, highlights, warnings,
           use_case_scores, estimated_speed_mbps, reliability_score, business_suitable,
-          reviews_analyzed, confidence_level, ai_model
+          reviews_analyzed, confidence_level, ai_model,
+          location_quirks, time_patterns, connection_quirks, business_traveler_notes, unique_features
         ) VALUES (
           '${summary.hotel_id}',
           ${summary.overall_score},
@@ -171,7 +179,12 @@ class CompleteWiFiPipeline {
           ${summary.overall_score >= 4 ? 'true' : 'false'},
           ${summary.review_count},
           '${summary.review_count >= 10 ? 'high' : summary.review_count >= 5 ? 'medium' : 'low'}',
-          'gpt-5-mini'
+          'gpt-5-mini',
+          ${summary.location_quirks.length > 0 ? locationQuirksArray : 'ARRAY[]::text[]'},
+          ${summary.time_patterns.length > 0 ? timePatternsArray : 'ARRAY[]::text[]'},
+          ${summary.connection_quirks.length > 0 ? connectionQuirksArray : 'ARRAY[]::text[]'},
+          ${summary.business_traveler_notes.length > 0 ? businessNotesArray : 'ARRAY[]::text[]'},
+          ${summary.unique_features.length > 0 ? uniqueFeaturesArray : 'ARRAY[]::text[]'}
         )
       `
       
