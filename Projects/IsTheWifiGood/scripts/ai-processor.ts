@@ -83,62 +83,38 @@ class WiFiReviewProcessor {
       .filter(r => r.extracted_speed)
       .map(r => r.extracted_speed)
 
-    return `Analyze these WiFi-related reviews for ${hotelName} and extract specific patterns, quirks, and unique characteristics:
+    return `Analyze WiFi reviews for ${hotelName}. Extract patterns and quirks for business travelers.
 
+Reviews:
 ${reviewTexts}
 
-${extractedSpeeds.length > 0 ? `Extracted speed mentions: ${extractedSpeeds.join(', ')} Mbps` : ''}
+${extractedSpeeds.length > 0 ? `Speeds mentioned: ${extractedSpeeds.join(', ')} Mbps` : ''}
 
-IMPORTANT: Look for patterns across reviews and extract specific WiFi quirks and behaviors. Focus on actionable details business travelers need.
-
-Please provide a JSON response with this exact structure:
+Return JSON only:
 {
-  "summary": "2-3 sentence summary highlighting key WiFi characteristics and any notable quirks",
+  "summary": "Brief summary with key characteristics and quirks",
   "overall_score": 1-5,
-  "positive_highlights": [
-    "3 specific positive points about the WiFi"
-  ],
-  "warnings": [
-    "1-2 specific warnings or issues if any exist, empty array if none"
-  ],
+  "positive_highlights": ["Up to 3 positive points"],
+  "warnings": ["Up to 2 warnings if any"],
   "use_case_scores": {
     "video_calls": 1-5,
-    "streaming": 1-5, 
+    "streaming": 1-5,
     "uploads": 1-5,
     "general_browsing": 1-5
   },
   "speed_analysis": {
-    "mentioned_speeds": [array of numbers],
-    "average_speed": number or null,
-    "speed_consistency": "consistent" | "variable" | "unknown"
+    "mentioned_speeds": [numbers],
+    "average_speed": number_or_null,
+    "speed_consistency": "consistent|variable|unknown"
   },
-  "location_quirks": [
-    "Location-specific WiFi behaviors like 'WiFi faster on higher floors', 'Dead zone in lobby', 'Conference rooms have separate network'"
-  ],
-  "time_patterns": [
-    "Time-based patterns like 'Slower during 6-9pm peak hours', 'Resets every night at 2am', 'Better performance on weekends'"
-  ],
-  "connection_quirks": [
-    "Connection/authentication issues like 'Need to reconnect every hour', 'Password changes daily', 'Multiple networks with confusing names'"
-  ],
-  "business_traveler_notes": [
-    "Work-specific considerations like 'VPN connectivity issues', 'Excellent for video calls', 'File uploads are slow', 'Works well with corporate apps'"
-  ],
-  "unique_features": [
-    "Special features like 'Premium WiFi upgrade available for $10/day', 'Ethernet cables in all rooms', 'Mobile hotspot rental at front desk'"
-  ]
+  "location_quirks": ["Location-specific behaviors"],
+  "time_patterns": ["Time-based patterns"], 
+  "connection_quirks": ["Connection issues"],
+  "business_traveler_notes": ["Work-specific insights"],
+  "unique_features": ["Special features"]
 }
 
-Analysis Guidelines:
-- **Overall Score**: 5=Excellent, 4=Good, 3=Moderate, 2=Poor, 1=Terrible
-- **Use Case Scores**: Based on bandwidth needs (video calls: 5-10+ Mbps, streaming: 10-25+ Mbps, uploads: 10+ Mbps, browsing: 1-5+ Mbps)
-- **Look for Patterns**: If multiple reviews mention similar issues/benefits, highlight them
-- **Extract Quirks**: Surface unusual behaviors, location dependencies, time-based patterns
-- **Business Focus**: Prioritize insights useful for remote work, video calls, file sharing
-- **Be Specific**: Use exact details from reviews, don't generalize
-- **Cross-Reference**: If reviews contradict each other, note the variability in appropriate sections
-
-IMPORTANT: Return ONLY valid JSON, no other text.`
+Focus: Extract specific quirks like floor differences, time patterns, VPN issues, premium options. Be concise but specific.`
   }
 
   async processReviews(hotelName: string, reviews: WiFiReview[]): Promise<WiFiSummary | null> {
@@ -165,7 +141,7 @@ IMPORTANT: Return ONLY valid JSON, no other text.`
               content: prompt
             }
           ],
-          max_completion_tokens: 1200, // Increased for GPT-5-mini reasoning + response
+          max_completion_tokens: 2200, // Allow room for reasoning (1500) + quirk analysis output (700)
           // temperature: 1.0, // GPT-5-mini only supports default temperature (removing parameter)
           response_format: { type: 'json_object' }
         })
