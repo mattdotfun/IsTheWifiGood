@@ -9,7 +9,7 @@
 
 import { chromium, Browser, Page } from 'playwright'
 import { scraperLogger } from '../src/lib/logger'
-import { RateLimiter, retry, sanitizeString, extractSpeedFromText } from '../src/lib/utils'
+import { RateLimiter, retry, sanitizeString, extractSpeedFromText, isReviewWithinYears, parseGoogleMapsDate } from '../src/lib/utils'
 
 interface Hotel {
   id: string
@@ -28,12 +28,32 @@ interface WiFiReview {
   extracted_speed?: number
 }
 
+interface NetworkConditions {
+  connectionSpeed: 'fast' | 'medium' | 'slow'
+  latency: number
+  isStable: boolean
+}
+
+interface AdaptiveTimeouts {
+  navigation: number
+  selector: number
+  results: number
+  interaction: number
+  maxRetries: number
+}
+
 class HotelWiFiScraper {
   private browser: Browser | null = null
   private rateLimiter: RateLimiter
+  private networkConditions: NetworkConditions
   
-  constructor(minDelaySeconds = 8) {
-    this.rateLimiter = new RateLimiter(minDelaySeconds)
+  constructor(minDelaySeconds = 6) {
+    this.rateLimiter = new RateLimiter(minDelaySeconds, minDelaySeconds * 2)
+    this.networkConditions = {
+      connectionSpeed: 'medium',
+      latency: 0,
+      isStable: true
+    }
   }
 
   async initialize(): Promise<void> {
@@ -228,216 +248,297 @@ class HotelWiFiScraper {
     }
   }
 
-  async searchHotelOnMaps(page: Page, hotelName: string, city: string): Promise<boolean> {
-    const maxRetries = 3
-    const timeouts = {
-      navigation: 30000,    // 30s for page navigation
-      selector: 15000,      // 15s for element selection
-      results: 8000,        // 8s for results to load
-      interaction: 4000     // 4s for click interactions
+  // Network condition detection and adaptive timeout calculation
+  private async detectNetworkConditions(page: Page): Promise<void> {
+    const startTime = Date.now()
+    
+    try {
+      // Simple network speed test using a small resource
+      await page.goto('data:text/html,<html><body>Network Test</body></html>', { 
+        timeout: 5000 
+      })
+      
+      const loadTime = Date.now() - startTime
+      this.networkConditions.latency = loadTime
+      
+      // Classify connection speed based on load time
+      if (loadTime < 500) {
+        this.networkConditions.connectionSpeed = 'fast'
+      } else if (loadTime < 1500) {
+        this.networkConditions.connectionSpeed = 'medium'
+      } else {
+        this.networkConditions.connectionSpeed = 'slow'
+      }
+      
+      this.networkConditions.isStable = loadTime < 2000
+      
+      scraperLogger.info(`Network conditions: ${this.networkConditions.connectionSpeed} (${loadTime}ms latency)`)
+      
+    } catch (error) {
+      scraperLogger.warn('Could not detect network conditions, using defaults')
+      this.networkConditions = {
+        connectionSpeed: 'medium',
+        latency: 1000,
+        isStable: false
+      }
     }
-
+  }
+  
+  private calculateAdaptiveTimeouts(): AdaptiveTimeouts {
+    const baseTimeouts = {
+      fast: {
+        navigation: 45000,
+        selector: 20000,
+        results: 10000,
+        interaction: 5000,
+        maxRetries: 3
+      },
+      medium: {
+        navigation: 60000,
+        selector: 30000,
+        results: 15000,
+        interaction: 8000,
+        maxRetries: 4
+      },
+      slow: {
+        navigation: 90000,
+        selector: 45000,
+        results: 25000,
+        interaction: 12000,
+        maxRetries: 5
+      }
+    }
+    
+    let timeouts = baseTimeouts[this.networkConditions.connectionSpeed]
+    
+    // Adjust for unstable connections
+    if (!this.networkConditions.isStable) {
+      timeouts = {
+        navigation: timeouts.navigation * 1.5,
+        selector: timeouts.selector * 1.3,
+        results: timeouts.results * 1.4,
+        interaction: timeouts.interaction * 1.2,
+        maxRetries: Math.min(timeouts.maxRetries + 1, 6)
+      }
+    }
+    
+    scraperLogger.info(`Adaptive timeouts: nav=${timeouts.navigation}ms, sel=${timeouts.selector}ms, retries=${timeouts.maxRetries}`)
+    return timeouts
+  }
+  
+  // Enhanced retry logic with exponential backoff and jitter
+  private async retryWithExponentialBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number,
+    operationName: string
+  ): Promise<T> {
+    let lastError: Error
+    
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const searchQuery = `${hotelName} ${city} hotel`
-        scraperLogger.info(`Searching for: ${searchQuery} (attempt ${attempt}/${maxRetries})`)
+        return await operation()
+      } catch (error) {
+        lastError = error as Error
+        
+        if (attempt === maxRetries) {
+          scraperLogger.error(`${operationName} failed after ${maxRetries} attempts: ${lastError.message}`)
+          throw lastError
+        }
+        
+        // Exponential backoff with jitter
+        const baseDelay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+        const jitter = Math.random() * 1000
+        const delay = baseDelay + jitter
+        
+        scraperLogger.warn(`${operationName} attempt ${attempt}/${maxRetries} failed: ${lastError.message}. Retrying in ${Math.round(delay)}ms...`)
+        
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    
+    throw lastError!
+  }
 
-        // Enhanced navigation with longer timeout
-        await page.goto('https://www.google.com/maps', { 
-          waitUntil: 'domcontentloaded', // More reliable than networkidle
-          timeout: timeouts.navigation 
-        })
-        
-        // Simulate human behavior after page load
-        await this.simulateMouseMovement(page)
-        await this.simulateHumanDelay(1000, 3000)
-        
-        // Multiple selector strategies for search box
-        const searchSelectors = [
-          'input[data-value="Search"]',
-          'input#searchboxinput',
-          'input[aria-label*="Search"]',
-          'input[placeholder*="Search"]'
-        ]
-        
-        let searchBox = null
-        for (const selector of searchSelectors) {
-          try {
-            await page.waitForSelector(selector, { timeout: timeouts.selector })
-            searchBox = page.locator(selector)
-            if (await searchBox.count() > 0) {
-              scraperLogger.info(`Found search box with selector: ${selector}`)
-              break
-            }
-          } catch (e) {
-            // Try next selector
-            continue
+  async searchHotelOnMaps(page: Page, hotelName: string, city: string): Promise<boolean> {
+    // Detect network conditions and calculate adaptive timeouts
+    await this.detectNetworkConditions(page)
+    const timeouts = this.calculateAdaptiveTimeouts()
+
+    return await this.retryWithExponentialBackoff(async () => {
+      const searchQuery = `${hotelName} ${city} hotel`
+      scraperLogger.info(`Searching for: ${searchQuery}`)
+
+      // Enhanced navigation with adaptive timeout
+      await page.goto('https://www.google.com/maps', { 
+        waitUntil: 'domcontentloaded', // More reliable than networkidle
+        timeout: timeouts.navigation 
+      })
+      
+      // Simulate human behavior after page load
+      await this.simulateMouseMovement(page)
+      await this.simulateHumanDelay(1000, 3000)
+      
+      // Multiple selector strategies for search box with enhanced selectors
+      const searchSelectors = [
+        'input[data-value="Search"]',
+        'input#searchboxinput',
+        'input[aria-label*="Search"]',
+        'input[placeholder*="Search"]',
+        'input[placeholder*="search"]',
+        'input[data-testid*="search"]',
+        '#searchboxinput',
+        'form input[type="text"]'
+      ]
+      
+      let searchBox = null
+      for (const selector of searchSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: timeouts.selector })
+          searchBox = page.locator(selector)
+          if (await searchBox.count() > 0) {
+            scraperLogger.info(`Found search box with selector: ${selector}`)
+            break
           }
+        } catch (e) {
+          // Try next selector
+          continue
         }
+      }
+      
+      if (!searchBox || await searchBox.count() === 0) {
+        throw new Error('No search box found with any selector')
+      }
+      
+      // Fill search query with retry
+      await searchBox.fill(searchQuery)
+      await page.keyboard.press('Enter')
+      
+      // Dynamic wait for results with adaptive timeout
+      await page.waitForTimeout(timeouts.results)
+      
+      // Enhanced hotel link detection with broader selectors
+      const hotelSelectors = [
+        `a:has-text("${hotelName}")`,
+        `[data-value*="${hotelName}"]`,
+        `*:has-text("${hotelName}"):visible`,
+        `[aria-label*="${hotelName}"]`,
+        `h1:has-text("${hotelName}")`,
+        `h2:has-text("${hotelName}")`,
+        `h3:has-text("${hotelName}")`
+      ]
+      
+      let hotelFound = false
+      for (const selector of hotelSelectors) {
+        const hotelLink = page.locator(selector)
+        const count = await hotelLink.count()
         
-        if (!searchBox || await searchBox.count() === 0) {
-          throw new Error('No search box found with any selector')
-        }
-        
-        // Fill search query with retry
-        await searchBox.fill(searchQuery)
-        await page.keyboard.press('Enter')
-        
-        // Dynamic wait for results with progressive timeout
-        await page.waitForTimeout(timeouts.results)
-        
-        // Enhanced hotel link detection
-        const hotelSelectors = [
-          `a:has-text("${hotelName}")`,
-          `[data-value="${hotelName}"]`,
-          `*:has-text("${hotelName}"):visible`
-        ]
-        
-        let hotelFound = false
-        for (const selector of hotelSelectors) {
-          const hotelLink = page.locator(selector)
-          const count = await hotelLink.count()
+        if (count > 0) {
+          scraperLogger.info(`Found hotel with selector: ${selector} (${count} matches)`)
           
+          // Use human-like click behavior
+          await this.simulateHumanDelay(500, 1500)
+          try {
+            await this.humanLikeClick(page, selector)
+          } catch (e) {
+            // Fallback to regular click
+            await hotelLink.first().click()
+          }
+          
+          await this.simulateHumanDelay(2000, 4000) // Human-like delay after click
+          hotelFound = true
+          break
+        }
+      }
+      
+      if (!hotelFound) {
+        throw new Error(`Hotel ${hotelName} not found in search results`)
+      }
+      
+      scraperLogger.success(`Successfully found and clicked hotel: ${hotelName}`)
+      return true
+    }, timeouts.maxRetries, `Search hotel: ${hotelName}`)
+  }
+
+  async navigateToReviews(page: Page): Promise<boolean> {
+    const timeouts = this.calculateAdaptiveTimeouts()
+
+    return await this.retryWithExponentialBackoff(async () => {
+      scraperLogger.info('Navigating to reviews tab')
+
+      // Enhanced selector strategies for Reviews tab (2024/2025 compatible)
+      const reviewsSelectors = [
+        'button:has-text("Reviews")',
+        'button[data-value="Reviews"]',
+        '[role="tab"]:has-text("Reviews")',
+        'div:has-text("Reviews"):visible',
+        'a:has-text("Reviews")',
+        '*[aria-label*="Reviews"]',
+        'button[aria-label*="reviews"]',
+        'button[aria-label*="Reviews"]',
+        '*[data-testid*="reviews"]',
+        '*[data-testid*="Reviews"]',
+        'span:has-text("Reviews")',
+        'div[role="button"]:has-text("Reviews")'
+      ]
+      
+      let reviewsFound = false
+      for (const selector of reviewsSelectors) {
+        try {
+          const reviewsElement = page.locator(selector)
+          await page.waitForSelector(selector, { timeout: timeouts.selector })
+          
+          const count = await reviewsElement.count()
           if (count > 0) {
-            scraperLogger.info(`Found hotel with selector: ${selector} (${count} matches)`)
+            scraperLogger.info(`Found reviews tab with selector: ${selector} (${count} matches)`)
             
-            // Use human-like click behavior
-            await this.simulateHumanDelay(500, 1500)
+            // Human-like behavior before clicking
+            await this.simulateHumanDelay(500, 1000)
             try {
               await this.humanLikeClick(page, selector)
             } catch (e) {
               // Fallback to regular click
-              await hotelLink.first().click()
+              await reviewsElement.first().click()
             }
             
-            await this.simulateHumanDelay(2000, 4000) // Human-like delay after click
-            hotelFound = true
+            await this.simulateHumanDelay(3000, 6000) // Wait for reviews to load
+            reviewsFound = true
             break
           }
-        }
-        
-        if (hotelFound) {
-          scraperLogger.success(`Successfully found and clicked hotel: ${hotelName}`)
-          return true
-        }
-        
-        scraperLogger.warn(`Hotel ${hotelName} not found in search results (attempt ${attempt})`)
-        
-        // If not last attempt, wait before retry
-        if (attempt < maxRetries) {
-          const retryDelay = attempt * 2000 // Exponential backoff
-          scraperLogger.info(`Waiting ${retryDelay}ms before retry...`)
-          await page.waitForTimeout(retryDelay)
-        }
-        
-      } catch (error) {
-        scraperLogger.error(`Error searching for hotel ${hotelName} (attempt ${attempt}):`, error)
-        
-        // If not last attempt, wait before retry
-        if (attempt < maxRetries) {
-          const retryDelay = attempt * 3000 // Exponential backoff
-          scraperLogger.info(`Waiting ${retryDelay}ms before retry...`)
-          await page.waitForTimeout(retryDelay)
+        } catch (e) {
+          // Try next selector
+          continue
         }
       }
-    }
-    
-    scraperLogger.error(`Failed to find hotel ${hotelName} after ${maxRetries} attempts`)
-    return false
-  }
-
-  async navigateToReviews(page: Page): Promise<boolean> {
-    const maxRetries = 3
-    const timeouts = {
-      selector: 15000,      // 15s for element detection
-      interaction: 5000     // 5s for click actions
-    }
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      
+      if (!reviewsFound) {
+        throw new Error('Reviews tab not found with any selector')
+      }
+      
+      // Verify we successfully navigated to reviews with enhanced detection
       try {
-        scraperLogger.info(`Navigating to reviews tab (attempt ${attempt}/${maxRetries})`)
-
-        // Multiple selector strategies for Reviews tab
-        const reviewsSelectors = [
-          'button:has-text("Reviews")',
-          'button[data-value="Reviews"]',
-          '[role="tab"]:has-text("Reviews")',
-          'div:has-text("Reviews"):visible',
-          'a:has-text("Reviews")',
-          '*[aria-label*="Reviews"]'
-        ]
-        
-        let reviewsFound = false
-        for (const selector of reviewsSelectors) {
-          try {
-            const reviewsElement = page.locator(selector)
-            await page.waitForSelector(selector, { timeout: timeouts.selector })
-            
-            const count = await reviewsElement.count()
-            if (count > 0) {
-              scraperLogger.info(`Found reviews tab with selector: ${selector} (${count} matches)`)
-              
-              // Human-like behavior before clicking
-              await this.simulateHumanDelay(500, 1000)
-              try {
-                await this.humanLikeClick(page, selector)
-              } catch (e) {
-                // Fallback to regular click
-                await reviewsElement.first().click()
-              }
-              
-              await this.simulateHumanDelay(3000, 6000) // Wait for reviews to load
-              reviewsFound = true
-              break
-            }
-          } catch (e) {
-            // Try next selector
-            continue
-          }
-        }
-        
-        if (reviewsFound) {
-          // Verify we successfully navigated to reviews
-          try {
-            await page.waitForSelector('[data-review-id], .review, [jsaction*="review"]', { 
-              timeout: 10000 
-            })
-            scraperLogger.success('Successfully navigated to reviews section')
-            return true
-          } catch (e) {
-            scraperLogger.warn('Reviews tab clicked but reviews section not detected')
-          }
-        }
-        
-        scraperLogger.warn(`Reviews tab not found (attempt ${attempt})`)
-        
-        // If not last attempt, wait before retry
-        if (attempt < maxRetries) {
-          const retryDelay = attempt * 2000 // Exponential backoff
-          scraperLogger.info(`Waiting ${retryDelay}ms before retry...`)
-          await page.waitForTimeout(retryDelay)
-        }
-        
-      } catch (error) {
-        scraperLogger.error(`Error navigating to reviews (attempt ${attempt}):`, error)
-        
-        // If not last attempt, wait before retry
-        if (attempt < maxRetries) {
-          const retryDelay = attempt * 2500
-          await page.waitForTimeout(retryDelay)
-        }
+        await page.waitForSelector('[data-review-id], .review, [jsaction*="review"], [data-testid*="review"]', { 
+          timeout: timeouts.results 
+        })
+        scraperLogger.success('Successfully navigated to reviews section')
+        return true
+      } catch (e) {
+        throw new Error('Reviews section not loaded after clicking tab')
       }
-    }
-    
-    scraperLogger.error(`Failed to navigate to reviews after ${maxRetries} attempts`)
-    return false
+    }, timeouts.maxRetries, 'Navigate to reviews')
   }
 
   async searchWiFiReviews(page: Page): Promise<WiFiReview[]> {
     const reviews: WiFiReview[] = []
     const maxReviews = 200 // Increased limit for comprehensive collection
-    const fiveYearsAgo = new Date()
-    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
+    const targetYears = 5 // Target 5 years of review data
+    
+    // Log the date range we're targeting
+    const cutoffDate = new Date()
+    cutoffDate.setFullYear(cutoffDate.getFullYear() - targetYears)
+    scraperLogger.info(`Collecting WiFi reviews from ${cutoffDate.toDateString()} to ${new Date().toDateString()} (${targetYears} years)`)
+    
+    let oldReviewsSkipped = 0
+    let unparsableDates = 0
     
     try {
       scraperLogger.info('Starting comprehensive WiFi review collection...')
@@ -583,20 +684,26 @@ class HotelWiFiScraper {
               const wifiMentioned = wifiKeywords.test(reviewText)
               
               if (wifiMentioned && reviewText.length > 20) {
-                // Check if review is from last 5 years (basic check)
-                let isRecent = true
-                if (reviewDate) {
-                  const dateCheck = /(\d{4})|(\d+)\s+(year|month)s?\s+ago/i
-                  const dateMatch = reviewDate.match(dateCheck)
-                  if (dateMatch && dateMatch[1]) {
-                    const year = parseInt(dateMatch[1])
-                    if (year < fiveYearsAgo.getFullYear()) {
-                      isRecent = false
+                // Enhanced date filtering - check if review is within target years
+                let isWithinTargetPeriod = true
+                
+                if (reviewDate && reviewDate.trim()) {
+                  isWithinTargetPeriod = isReviewWithinYears(reviewDate, targetYears)
+                  
+                  if (!isWithinTargetPeriod) {
+                    oldReviewsSkipped++
+                    if (oldReviewsSkipped <= 3) {
+                      // Log first few skipped reviews for debugging
+                      const parsedDate = parseGoogleMapsDate(reviewDate)
+                      scraperLogger.info(`Skipping old review: "${reviewDate}" -> ${parsedDate?.toDateString() || 'unparsable'}`)
                     }
                   }
+                } else if (reviewDate) {
+                  // Empty or whitespace-only date
+                  unparsableDates++
                 }
                 
-                if (isRecent) {
+                if (isWithinTargetPeriod) {
                   const extractedSpeed = extractSpeedFromText(reviewText)
                   
                   // Avoid duplicates by checking if we already have this review
@@ -653,7 +760,23 @@ class HotelWiFiScraper {
         }
       }
       
-      scraperLogger.success(`Comprehensive scan complete: Found ${reviews.length} WiFi-related reviews`)
+      // Enhanced logging with date filtering statistics
+      scraperLogger.success(`Enhanced 5-year WiFi review collection complete:`)
+      scraperLogger.info(`  📊 WiFi reviews collected: ${reviews.length}`)
+      scraperLogger.info(`  📅 Date range: ${cutoffDate.toDateString()} to ${new Date().toDateString()}`)
+      scraperLogger.info(`  ⏰ Old reviews skipped: ${oldReviewsSkipped} (older than ${targetYears} years)`)
+      scraperLogger.info(`  ❓ Unparsable dates: ${unparsableDates}`)
+      
+      const recentReviews = reviews.filter(r => r.review_date.includes('ago') || r.review_date.includes('yesterday'))
+      const absoluteYearReviews = reviews.filter(r => /20\d{2}/.test(r.review_date))
+      
+      scraperLogger.info(`  🆕 Recent format ("X ago"): ${recentReviews.length}`)
+      scraperLogger.info(`  📆 Absolute year format: ${absoluteYearReviews.length}`)
+      
+      if (oldReviewsSkipped > 0) {
+        scraperLogger.info(`  ✅ Enhanced date filtering working: excluded ${oldReviewsSkipped} reviews older than ${targetYears} years`)
+      }
+      
       return reviews
       
     } catch (error) {
@@ -673,12 +796,14 @@ class HotelWiFiScraper {
       // Search for hotel on Google Maps
       const found = await this.searchHotelOnMaps(page, hotel.name, 'Singapore') // TODO: Get city name from DB
       if (!found) {
+        this.rateLimiter.recordFailure()
         return []
       }
       
       // Navigate to reviews
       const reviewsLoaded = await this.navigateToReviews(page)
       if (!reviewsLoaded) {
+        this.rateLimiter.recordFailure()
         return []
       }
       
@@ -690,10 +815,20 @@ class HotelWiFiScraper {
         review.hotel_id = hotel.id
       })
       
+      // Record success based on review count
+      if (reviews.length > 0) {
+        this.rateLimiter.recordSuccess()
+        scraperLogger.success(`Successfully collected ${reviews.length} WiFi reviews for ${hotel.name}`)
+      } else {
+        this.rateLimiter.recordFailure()
+        scraperLogger.warn(`No WiFi reviews found for ${hotel.name}`)
+      }
+      
       return reviews
       
     } catch (error) {
       scraperLogger.error(`Error scraping hotel ${hotel.name}:`, error)
+      this.rateLimiter.recordFailure()
       return []
     } finally {
       await page.close()
@@ -794,6 +929,20 @@ class HotelWiFiScraper {
       await this.browser.close()
       this.browser = null
     }
+    
+    // Log rate limiter stats
+    const stats = this.rateLimiter.getStats()
+    scraperLogger.info(`Scraper session stats: ${stats.successCount} successes, ${stats.failureCount} failures (${(stats.successRate * 100).toFixed(1)}% success rate)`)
+  }
+
+  // Add cleanup method for better resource management
+  async cleanup(): Promise<void> {
+    await this.close()
+  }
+
+  // Get rate limiter statistics
+  getRateLimiterStats() {
+    return this.rateLimiter.getStats()
   }
 }
 
